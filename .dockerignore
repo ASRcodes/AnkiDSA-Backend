@@ -1,0 +1,8 @@
+target/
+.idea/
+.local/
+.env
+*.log
+**/*service-account*.json
+**/*.jks
+**/*.keystore

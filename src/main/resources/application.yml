@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: ankidsa
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    baseline-on-migrate: false
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USER:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:true}
+      mail.smtp.starttls.required: ${MAIL_STARTTLS:true}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+server:
+  port: ${PORT:8081}
+  error:
+    include-message: never
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 86400000
+app:
+  timezone: ${APP_TIMEZONE:Asia/Kolkata}
+  cors-origins: ${CORS_ORIGINS:http://localhost:3000,chrome-extension://bafnmcdkpidnpollodebmifggmmpkbje}
+  notifications-enabled: ${NOTIFICATIONS_ENABLED:false}
+  public-url: ${APP_PUBLIC_URL:}
+  recovery:
+    enabled: ${RECOVERY_ENABLED:false}
+    from: ${MAIL_FROM:}
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
+logging:
+  level:
+    com.ankidsa: INFO

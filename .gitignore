@@ -1,0 +1,23 @@
+# === Build output ===
+target/
+*.jar
+*.war
+
+# === IDE files ===
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# === Environment / secrets ===
+.env
+src/main/resources/firebase-service-account.json
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
+# Local databases and generated launch secrets
+.local/

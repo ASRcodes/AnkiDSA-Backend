@@ -1,0 +1,24 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      DB_URL: ${DB_URL:?Set DB_URL to a PostgreSQL JDBC URL}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set a random JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Kolkata}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
+      RECOVERY_ENABLED: ${RECOVERY_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_AUTH: ${MAIL_AUTH:-true}
+      MAIL_STARTTLS: ${MAIL_STARTTLS:-true}
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-false}
+      # Mount ADC credentials separately when enabling Firebase reminders.
+    restart: unless-stopped
