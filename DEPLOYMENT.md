@@ -1,7 +1,7 @@
 # Backend deployment entry point
 
 For the Supabase `ENOIDENTIFIER` startup failure, start with [RENDER-FIX.md](RENDER-FIX.md).
-The existing GitHub revision uses `DB_USER`; the local deployment code prefers
+Older revisions used only `DB_USER`; the deployed code prefers
 `DB_USERNAME` and also supports `DB_USER`. Both need the complete pooler username
 (`postgres.<project-ref>`), not just `postgres`.
 
@@ -10,6 +10,11 @@ with `RECOVERY_ENABLED=false`, set `API_PUBLIC_URL` to its Render HTTPS URL, and
 only the known Chrome extension origin in `CORS_ORIGINS`. Once Netlify allocates the
 web URL, add that exact HTTPS origin to CORS and set `APP_PUBLIC_URL`. Password
 recovery requires both that frontend URL and a working mail provider.
+
+Current release: API https://ankidsa-backend.onrender.com and web
+https://ankidsa.netlify.app are live. Render has the exact Netlify and extension
+CORS origins configured. Recovery email and push are still disabled pending
+provider configuration; account/study flows have passed live verification.
 
 The complete owner-facing guide is maintained in the companion [AnkiDSA frontend DEPLOYMENT.md](https://github.com/ASRcodes/AnkiDSA-frontend/blob/main/DEPLOYMENT.md). In this workspace it is `C:\Users\rajsi\ankidsa\DEPLOYMENT.md`. Publish both reviewed repository revisions together; the link will contain the new guide only after you push these changes.
 

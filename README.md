@@ -1,6 +1,9 @@
 # AnkiDSA-Backend
 AnkiDSA's backend.
 
+Live API: https://ankidsa-backend.onrender.com. Web app: https://ankidsa.netlify.app.
+The 2026-10-15 repair and live verification are recorded in [RENDER-FIX.md](RENDER-FIX.md).
+
 Render failing with `ENOIDENTIFIER` / `no tenant identifier provided`? Follow
 [RENDER-FIX.md](RENDER-FIX.md) for the exact Supabase pooler settings, including the
 `DB_USER` name required by older deployed revisions.

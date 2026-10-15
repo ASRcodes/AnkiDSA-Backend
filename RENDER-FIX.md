@@ -85,8 +85,9 @@ References: [Supabase connection modes](https://supabase.com/docs/guides/databas
   extension CORS. The generated test account was removed and original records
   were checked again. Existing database credentials and JWT secret were preserved.
 - Password-recovery email and push notifications remain disabled pending provider
-  configuration. The Netlify frontend URL will be added to exact CORS origins
-  once allocated.
+  configuration. https://ankidsa.netlify.app is deployed and included in exact
+  CORS origins alongside the extension. The settings are live in Render deploy
+  `dep-db8ak749v7es73875bn0`, running commit `499d369`.
 - The full GitHub validation now passes, including Docker startup. Its disposable
   demo smoke test uses an in-memory H2 database because the non-root runtime
   intentionally cannot write under `/app`.
