@@ -30,8 +30,13 @@ public class GlobalExceptionHandler {
     ResponseEntity<?> conflict(Exception e) { return error(409, "That entry already exists or was changed. Refresh and try again."); }
     @ExceptionHandler(Exception.class)
     ResponseEntity<?> unexpected(Exception e) {
-        log.error("Request failed", e);
+        // Exception messages/SQL can contain credentials, reset links or user data.
+        log.error("Request failed type={}", e.getClass().getSimpleName());
         return error(500, "Something went wrong. Please try again.");
     }
+    @ExceptionHandler(org.springframework.dao.DataAccessResourceFailureException.class)
+    ResponseEntity<?> unavailable(Exception e) { return error(503, "AnkiDSA is temporarily unavailable. Please retry shortly."); }
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<?> method(Exception e) { return error(405, "This method is not supported."); }
     private ResponseEntity<?> error(int status, String message) { return ResponseEntity.status(status).body(Map.of("message", message)); }
 }

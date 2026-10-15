@@ -1,0 +1,31 @@
+name: Deploy approved backend revision
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Request Render deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          python3 - <<'PY'
+          import os, urllib.request, urllib.parse
+          url = os.environ['RENDER_DEPLOY_HOOK']
+          parsed = urllib.parse.urlsplit(url)
+          assert parsed.scheme == 'https' and parsed.hostname == 'api.render.com'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args): return None
+          try:
+              opener = urllib.request.build_opener(NoRedirect())
+              with opener.open(urllib.request.Request(url, data=b'', method='POST'), timeout=30) as r:
+                  assert r.status in (200, 201, 202)
+              print('Render accepted the deployment request; verify its status in Render.')
+          except Exception:
+              raise SystemExit('Render deployment request failed; inspect configuration privately.')
+          PY

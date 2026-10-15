@@ -2,9 +2,16 @@ spring:
   application:
     name: ankidsa
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
+    url: ${DB_URL:}
+    username: ${DB_USERNAME:${DB_USER:}}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:3}
+      minimum-idle: 0
+      connection-timeout: 10000
+      validation-timeout: 3000
+      idle-timeout: 60000
+      max-lifetime: 600000
   jpa:
     open-in-view: false
     hibernate:
@@ -13,6 +20,9 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     baseline-on-migrate: false
+    clean-disabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 25s
   mail:
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:587}
@@ -27,19 +37,42 @@ spring:
       mail.smtp.writetimeout: 5000
 server:
   port: ${PORT:8081}
+  shutdown: graceful
+  forward-headers-strategy: none
+  max-http-request-header-size: 16KB
+  tomcat:
+    connection-timeout: 10s
+    max-http-form-post-size: 64KB
+    threads:
+      max: 30
+      min-spare: 2
   error:
     include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
 jwt:
   secret: ${JWT_SECRET}
-  expiration-ms: 86400000
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 app:
   timezone: ${APP_TIMEZONE:Asia/Kolkata}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,chrome-extension://bafnmcdkpidnpollodebmifggmmpkbje}
   notifications-enabled: ${NOTIFICATIONS_ENABLED:false}
   public-url: ${APP_PUBLIC_URL:}
+  api-public-url: ${API_PUBLIC_URL:}
+  trusted-proxy-cidrs: ${TRUSTED_PROXY_CIDRS:}
+  reminders:
+    trigger-secret: ${REMINDER_TRIGGER_SECRET:}
+    start: '06:30'
+    end: '12:00'
+    batch-size: 10
+    max-attempts: 5
+    lease-seconds: 180
   recovery:
     enabled: ${RECOVERY_ENABLED:false}
     from: ${MAIL_FROM:}
+    provider: ${MAIL_PROVIDER:smtp}
+    brevo-api-key: ${BREVO_API_KEY:}
+    daily-limit: ${MAIL_DAILY_LIMIT:250}
 springdoc:
   api-docs:
     enabled: ${API_DOCS_ENABLED:false}

@@ -1,46 +1,30 @@
-# Deploying the AnkiDSA backend
+# Backend deployment entry point
 
-Use Java 21 and Maven 3.9+. Run `./scripts/maven.ps1 -B verify`, or build the included multi-stage Dockerfile.
+For the Supabase `ENOIDENTIFIER` startup failure, start with [RENDER-FIX.md](RENDER-FIX.md).
+The existing GitHub revision uses `DB_USER`; the local deployment code prefers
+`DB_USERNAME` and also supports `DB_USER`. Both need the complete pooler username
+(`postgres.<project-ref>`), not just `postgres`.
 
-Required environment:
+The API can start before the web frontend is deployed: leave `APP_PUBLIC_URL` empty
+with `RECOVERY_ENABLED=false`, set `API_PUBLIC_URL` to its Render HTTPS URL, and use
+only the known Chrome extension origin in `CORS_ORIGINS`. Once Netlify allocates the
+web URL, add that exact HTTPS origin to CORS and set `APP_PUBLIC_URL`. Password
+recovery requires both that frontend URL and a working mail provider.
 
-```text
-DB_URL=jdbc:postgresql://YOUR_HOST:5432/postgres?sslmode=require
-DB_USER=your_application_role
-DB_PASSWORD=your_rotated_password
-JWT_SECRET=your_random_secret_with_at_least_32_bytes
-CORS_ORIGINS=https://YOUR_FLUTTER_HOST,chrome-extension://bafnmcdkpidnpollodebmifggmmpkbje
-APP_TIMEZONE=Asia/Kolkata
-```
+The complete owner-facing guide is maintained in the companion [AnkiDSA frontend DEPLOYMENT.md](https://github.com/ASRcodes/AnkiDSA-frontend/blob/main/DEPLOYMENT.md). In this workspace it is `C:\Users\rajsi\ankidsa\DEPLOYMENT.md`. Publish both reviewed repository revisions together; the link will contain the new guide only after you push these changes.
 
-Rotate the database password exposed in the original source before deployment. Keep secrets, local database files, service-account keys, and source backups private.
+Use one **Render Free Web Service**, Docker/Java 21, `plan: free`, no disk/worker/cron/database service. Keep existing **Supabase Free PostgreSQL data**. `render.yaml` is optional configuration, not an instruction to deploy automatically. Health `/health`, database readiness `/ready`. Normal production startup has `FLYWAY_ENABLED=false` and Hibernate `validate`.
 
-The server listens on port 8081, configurable with PORT. Put it behind HTTPS and verify GET /health. API documentation is disabled unless API_DOCS_ENABLED=true.
+Before deployment:
 
-Flyway applies V1–V4 to fresh databases; Hibernate validates the schema. Before upgrading an existing database, verify a backup and rehearse on a copy. Confirm the legacy schema matches V1, baseline once at version 1, and let V2–V4 run. Remove the baseline override afterwards. Never run the old root schema.sql alongside Flyway.
+1. Verify existing project reference, schema, migrations, data counts, Data API grants and TLS session-pooler connection. Run `scripts/verify-database.sql` read-only. Create an external encrypted backup and restore it into a disposable local database to verify it. Do not point test scripts at Supabase.
+2. Build with `mvn -B verify` / `scripts/maven.ps1 -B verify`. Set private process `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, plus `EXPECTED_DATABASE` and `EXPECTED_DATABASE_ROLE`. Run `java -jar target/ankidsa-backend-1.0.0.jar --verify-database`.
+3. Review pending SQL. V1–V4 are unchanged; legacy V4 clears `users.fcm_token`, so review it explicitly if pending. V5 is additive. After verified backup/review set maintenance-only `BACKUP_VERIFIED=true`, `MIGRATION_APPROVED=true`, and `LEGACY_V4_REVIEWED=true` only if appropriate; run `--migrate-database`. No automatic baseline, clean, reset, DROP or TRUNCATE is permitted. Missing or conflicting Flyway history requires manual reconciliation.
+4. In Render connect this GitHub repo/root Dockerfile. Choose Free, disable auto deploy, health check `/ready`. Enter every value in `.env.example` privately, replacing placeholders. Use exact Pages/Render HTTPS origins; secrets never go into client bundles.
+5. Configure Brevo Free verified sender/API key, Firebase Spark FCM HTTP v1/least-privilege service account. Upload Firebase JSON as Render secret file `firebase-service-account.json`; set `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json`. Set notifications/recovery true only with functioning credentials. Brevo sender approval without an owned domain is an external launch gate.
+6. Backend Actions `checks.yml` has no provider secrets. Create main-only `reminders` environment with `API_PUBLIC_URL` variable and independent `REMINDER_TRIGGER_SECRET` secret. Set repository variable `REMINDERS_ENABLED=true` only after notification delivery is configured, then manually test `reminders.yml` inside 06:30–12:00 Asia/Kolkata. GHA triggers four morning batches, handles cold starts, and uses a database lease/claim ledger. Delivery remains best effort, with an unavoidable crash-after-FCM-acceptance duplicate boundary.
+7. Optional deployment workflow uses main-only `production` environment `RENDER_DEPLOY_HOOK`; run only after required validation passed on the intended latest main revision. No paid overages or billing method.
 
-V2 adds password hashes, versions, and review request IDs. V3 adds password recovery and session versions. V4 adds device registrations and clears legacy push tokens so clients can request consent again. Users must sign in again after the session-version upgrade.
+Tests: H2 and disposable loopback PostgreSQL, plus notification/email adapter mocks/local HTTP. Docker build/runtime checks are in CI and must pass before launch; Docker is not installed in the current local workspace. No live provider test is implied by mocks.
 
-## Password recovery
-
-Set APP_PUBLIC_URL to the HTTPS Flutter app origin, RECOVERY_ENABLED=true, and configure MAIL_HOST, MAIL_PORT (587 by default), MAIL_FROM, MAIL_USER, and MAIL_PASSWORD. SMTP authentication and required STARTTLS default to true. See .env.example for the complete configuration.
-
-Verify the sender domain and real inbox delivery with your mail provider before public signup. Automated mail tests use a local SMTP server or mocks. Reset tokens are random, hashed in storage, valid for 30 minutes, and single-use. Responses do not disclose account existence; requests have an account cooldown and an IP rate limit. A successful reset revokes all earlier sessions and device registrations and sends a change notice.
-
-Legacy accounts without passwords can recover access by proving mailbox ownership through this flow. Google OAuth is not implemented.
-
-## Reminders
-
-Set NOTIFICATIONS_ENABLED=true and supply Firebase Application Default Credentials. Prefer a managed service identity. If using a service-account file in Docker, mount it privately and set GOOGLE_APPLICATION_CREDENTIALS to its container path.
-
-Clients opt in through their notification settings. PUT /api/users/me/device registers an FCM token; DELETE at the same path removes only the authenticated user's matching token. Both accept {"token":"..."} and return 204. Multiple devices are supported and one token has one owner. Resetting a password removes all of that account's registrations.
-
-The scheduler runs at 06:30 in APP_TIMEZONE and sends generic reminders only when problems are due. Tokens inactive for 30 days and tokens rejected as unregistered are removed. Run only one scheduler instance. Configure the Flutter app with public Firebase client values and verify real-device delivery before offering push to users; simulated tests do not establish provider delivery.
-
-## Operations and local demo
-
-Configure trusted proxy handling and shared rate limits at the gateway when scaling beyond one API instance. Do not trust arbitrary forwarded client addresses. Back up the database, monitor errors, and rehearse restores.
-
-Run ./scripts/run-demo.ps1 for a local backend, or the Flutter project's scripts/start-demo.ps1 for both API and web app. The demo uses a private local H2 file, a sample account, and a local .local/outbox mailbox. It never uses SMTP for recovery. Keep the demo profile out of production.
-
-The Flutter project's DEMO.md, TESTING.md, and PRODUCTION.md cover the complete system, client configuration, native signing, recording, and remaining deployment checks.
+Rollback the application to a reviewed compatible artifact while retaining additive tables and all study data. Do not down-migrate or restore over the live database. Restore only into a separate recovery database pending explicit owner review. Pause reminder jobs while investigating failures. Rotate exposed secrets; never reintroduce compromised credentials from old artifacts.

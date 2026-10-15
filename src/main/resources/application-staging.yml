@@ -1,0 +1,4 @@
+spring:
+  config:
+    import: classpath:application-production.yml
+# Staging must have its own disposable database, secrets and Firebase project.

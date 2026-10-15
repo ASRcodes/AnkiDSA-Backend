@@ -19,9 +19,20 @@ import static org.junit.jupiter.api.Assertions.*;
  "app.notifications-enabled=false"
 })
 @AutoConfigureMockMvc
+@org.springframework.test.context.ContextConfiguration(initializers=TestDatabaseGuard.class)
 class ApiIntegrationTest {
  @Autowired MockMvc mvc;
  @Autowired com.ankidsa.repository.ReminderDeviceRepository devices;
+ @Test void logoutRevokesOnlyThePresentedSessionAndHealthIsSafe() throws Exception {
+  String first=session(), second=session();
+  mvc.perform(post("/api/auth/logout").header("Authorization","Bearer "+first)).andExpect(status().isNoContent());
+  mvc.perform(get("/api/auth/verify").header("Authorization","Bearer "+first)).andExpect(status().isUnauthorized());
+  mvc.perform(get("/api/auth/verify").header("Authorization","Bearer "+second)).andExpect(status().isOk());
+  mvc.perform(get("/health")).andExpect(status().isOk()).andExpect(header().string("X-Content-Type-Options","nosniff"));
+  mvc.perform(get("/ready")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ready"));
+  mvc.perform(post("/internal/reminders")).andExpect(status().isUnauthorized());
+  mvc.perform(post("/internal/reminders").header("Authorization","Bearer "+second)).andExpect(status().isUnauthorized());
+ }
 
  void registerDevice(String session, String token) throws Exception {
   mvc.perform(put("/api/users/me/device").header("Authorization", "Bearer " + session)

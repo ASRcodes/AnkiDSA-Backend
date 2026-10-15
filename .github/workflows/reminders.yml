@@ -1,0 +1,27 @@
+name: Daily reminder delivery
+on:
+  schedule:
+    # UTC, daily at 06:33 / 06:53 / 07:13 and 09:47 Asia/Kolkata.
+    - cron: '3,23,43 1 * * *'
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: reminder-delivery
+  cancel-in-progress: false
+jobs:
+  deliver:
+    if: github.ref == 'refs/heads/main' && vars.REMINDERS_ENABLED == 'true'
+    environment: reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Wake API and deliver bounded batches
+        run: python3 scripts/trigger-reminders.py
+        env:
+          API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
+          REMINDER_TRIGGER_SECRET: ${{ secrets.REMINDER_TRIGGER_SECRET }}

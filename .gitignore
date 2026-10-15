@@ -21,3 +21,16 @@ Thumbs.db
 *.log
 # Local databases and generated launch secrets
 .local/
+.env.*
+!.env.example
+**/*service-account*.json
+**/*adminsdk*.json
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.dump
+*.backup
+__pycache__/
+*.hprof

@@ -8,7 +8,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
 @Component @Profile("!demo")
-@ConditionalOnProperty(name = "app.recovery.enabled", havingValue = "true")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("'${app.recovery.provider:smtp}' == 'smtp' && ${app.recovery.enabled:false}")
 public class SmtpAccountMailSender implements AccountMailSender {
     private final JavaMailSender sender;
     private final String from;

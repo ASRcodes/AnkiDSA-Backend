@@ -1,0 +1,13 @@
+spring:
+  flyway:
+    # Existing data is never migrated just by deploying a new container.
+    enabled: ${FLYWAY_ENABLED:false}
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: OFF
+    org.hibernate.orm.jdbc.error: OFF
+app:
+  hosted: true

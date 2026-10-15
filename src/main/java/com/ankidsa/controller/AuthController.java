@@ -17,6 +17,19 @@ public class AuthController {
     private final UserRepository users;
     private final JwtService jwt;
     private final PasswordEncoder passwords;
+    private final com.ankidsa.service.SessionRevocations revocations;
+    private final com.ankidsa.service.ReminderDeviceService devices;
+    public record LogoutRequest(@Size(max = 4096) String deviceToken) {}
+
+    @PostMapping("/logout") @ResponseStatus(HttpStatus.NO_CONTENT)
+    @org.springframework.transaction.annotation.Transactional
+    public void logout(jakarta.servlet.http.HttpServletRequest request,
+            @Valid @RequestBody(required = false) LogoutRequest body) {
+        var identity = (JwtService.Identity) request.getAttribute("ankidsa.identity");
+        if (identity == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        revocations.revoke(identity);
+        if (body != null && body.deviceToken() != null) devices.remove(identity.userId(), body.deviceToken());
+    }
 
     public record Credentials(@NotBlank @Email @Size(max = 255) String email,
         @NotBlank @Size(min = 10, max = 64) String password, @Size(max = 80) String name) {}

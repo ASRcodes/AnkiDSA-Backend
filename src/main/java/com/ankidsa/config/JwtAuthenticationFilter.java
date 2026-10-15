@@ -15,6 +15,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwt;
     private final UserRepository users;
+    private final com.ankidsa.service.SessionRevocations revocations;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -22,13 +23,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             var identity = jwt.read(header.substring(7));
-            if (identity != null) {
+            try {
+              if (identity != null && !revocations.revoked(identity.sessionId())) {
                 var user = users.findById(identity.userId()).orElse(null);
                 if (user != null && user.getTokenVersion() == identity.tokenVersion()) {
                     var authentication = new UsernamePasswordAuthenticationToken(user.getId(), null, Collections.emptyList());
                     authentication.setDetails(identity.tokenVersion());
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+                    request.setAttribute("ankidsa.identity", identity);
                 }
+              }
+            } catch (org.springframework.dao.DataAccessException unavailable) {
+                response.setStatus(503); response.setContentType("application/json");
+                response.getWriter().write("{\"message\":\"AnkiDSA is temporarily unavailable. Please retry shortly.\"}");
+                return;
             }
         }
         chain.doFilter(request, response);

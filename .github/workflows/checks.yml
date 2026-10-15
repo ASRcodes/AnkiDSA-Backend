@@ -1,0 +1,67 @@
+name: Backend validation
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backend-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: beta_test_admin
+          POSTGRES_DB: ankidsa_test_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['127.0.0.1:5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -B verify
+      - run: python3 scripts/check-secrets.py
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - run: mvn -B test
+        env:
+          TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/ankidsa_test_ci
+          TEST_DB_USER: beta_test_admin
+      - name: Production profile smoke against read-only local TLS database
+        env:
+          TEST_DB_TLS_URL: jdbc:postgresql://127.0.0.1:5432/ankidsa_test_ci?sslmode=require
+          TEST_DB_USER: beta_test_admin
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/server.key" -out "$RUNNER_TEMP/server.crt" -days 1 -subj /CN=localhost
+          docker cp "$RUNNER_TEMP/server.key" "$PG_CONTAINER:/tmp/server.key"
+          docker cp "$RUNNER_TEMP/server.crt" "$PG_CONTAINER:/tmp/server.crt"
+          docker exec "$PG_CONTAINER" chown postgres:postgres /tmp/server.key /tmp/server.crt
+          docker exec "$PG_CONTAINER" chmod 600 /tmp/server.key
+          docker exec "$PG_CONTAINER" psql -U beta_test_admin -d ankidsa_test_ci -c "ALTER SYSTEM SET ssl_cert_file='/tmp/server.crt'"
+          docker exec "$PG_CONTAINER" psql -U beta_test_admin -d ankidsa_test_ci -c "ALTER SYSTEM SET ssl_key_file='/tmp/server.key'"
+          docker exec "$PG_CONTAINER" psql -U beta_test_admin -d ankidsa_test_ci -c "ALTER SYSTEM SET ssl='on'"
+          docker exec "$PG_CONTAINER" psql -U beta_test_admin -d ankidsa_test_ci -c 'SELECT pg_reload_conf()'
+          mvn -B -Dtest=HostedPostgresSmokeTest test
+      - name: Docker build and disposable startup
+        run: |
+          docker build -t ankidsa:test .
+          docker run -d --name ankidsa-test --memory=512m -p 127.0.0.1:8081:8081 -e SERVER_ADDRESS=0.0.0.0 -e SPRING_PROFILES_ACTIVE=demo -e JWT_SECRET="$(openssl rand -base64 48)" ankidsa:test
+          trap 'docker rm -f ankidsa-test' EXIT
+          for attempt in $(seq 1 36); do
+            if curl --fail --silent http://127.0.0.1:8081/ready >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          echo 'Disposable container did not become ready'
+          exit 1

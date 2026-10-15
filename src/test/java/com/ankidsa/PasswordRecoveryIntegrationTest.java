@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "app.public-url=http://localhost:3000"
 })
 @AutoConfigureMockMvc
+@org.springframework.test.context.ContextConfiguration(initializers=TestDatabaseGuard.class)
 class PasswordRecoveryIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired UserRepository users;
@@ -40,6 +41,7 @@ class PasswordRecoveryIntegrationTest {
     @Autowired ReminderDeviceRepository devices;
     @Autowired ReminderDeviceService registrations;
     @MockitoBean AccountMailSender mail;
+    @org.junit.jupiter.api.BeforeEach void mailIsAvailable() { when(mail.available()).thenReturn(true); }
 
     record Account(String email, String token) {}
 

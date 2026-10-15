@@ -42,7 +42,20 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class AnkiDsaApplication {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        if (java.util.Arrays.asList(args).contains("--verify-database") || java.util.Arrays.asList(args).contains("--migrate-database")) {
+            try { DatabaseMaintenance.run(java.util.Arrays.asList(args).contains("--migrate-database")); }
+            catch (com.ankidsa.config.DatabaseConnectionConfiguration.InvalidDatabaseConfigurationException e) {
+                System.err.println(e.getMessage());
+                System.exit(1);
+            }
+            catch (Exception e) {
+                // Drivers can include credentials/addresses in exception text.
+                System.err.println("Database maintenance did not complete. Check identity, backup approval, migration state, and connection settings privately. Error type: " + e.getClass().getSimpleName());
+                System.exit(1);
+            }
+            return;
+        }
         SpringApplication.run(AnkiDsaApplication.class, args);
     }
 }

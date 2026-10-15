@@ -15,6 +15,15 @@ import java.util.*;
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final ReminderTriggerFilter jobFilter;
+    @Bean org.springframework.boot.web.servlet.FilterRegistrationBean<JwtAuthenticationFilter> jwtRegistration() {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(jwtAuthFilter);
+        registration.setEnabled(false); return registration;
+    }
+    @Bean org.springframework.boot.web.servlet.FilterRegistrationBean<ReminderTriggerFilter> jobRegistration() {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(jobFilter);
+        registration.setEnabled(false); return registration;
+    }
     @Value("${app.cors-origins}") private String origins;
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
     @Bean org.springframework.security.core.userdetails.UserDetailsService userDetailsService() {
@@ -26,7 +35,8 @@ public class SecurityConfig {
             .sessionManagement(c -> c.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(c -> c
                 .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/options",
-                    "/api/auth/forgot-password", "/api/auth/reset-password", "/health", "/error").permitAll()
+                    "/api/auth/forgot-password", "/api/auth/reset-password", "/health", "/ready", "/error").permitAll()
+                .requestMatchers("/internal/reminders").hasAuthority("REMINDER_JOB")
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/**").authenticated().anyRequest().denyAll())
             .exceptionHandling(c -> c
@@ -38,6 +48,11 @@ public class SecurityConfig {
                     res.setStatus(403); res.setContentType("application/json");
                     res.getWriter().write("{\"message\":\"You do not have access to this resource.\"}");
                 }))
+            .headers(h -> h
+                .httpStrictTransportSecurity(s -> s.requestMatcher(org.springframework.security.web.util.matcher.AnyRequestMatcher.INSTANCE).includeSubDomains(false).maxAgeInSeconds(31536000))
+                .contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
+                .referrerPolicy(r -> r.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
+            .addFilterBefore(jobFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class).build();
     }
     @Bean CorsConfigurationSource corsConfigurationSource() {

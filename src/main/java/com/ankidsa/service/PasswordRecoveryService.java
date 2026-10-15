@@ -65,6 +65,8 @@ public class PasswordRecoveryService {
     public void request(String email) {
         if (!enabled)
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Password recovery is not available yet.");
+        if (!mail.getObject().available())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Email delivery is temporarily unavailable. Please try again later.");
         // Neither the HTTP response nor its timing depends on whether this account exists.
         try {
             executor.execute(() -> issue(email.trim().toLowerCase(Locale.ROOT)));

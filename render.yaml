@@ -1,0 +1,27 @@
+# Optional blueprint; no database, disk, cron service, or paid instance is created.
+services:
+  - type: web
+    name: ankidsa-api
+    runtime: docker
+    plan: free
+    autoDeployTrigger: 'off'
+    healthCheckPath: /ready
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: FLYWAY_ENABLED
+        value: 'false'
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

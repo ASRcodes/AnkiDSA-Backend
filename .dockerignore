@@ -6,3 +6,11 @@ target/
 **/*service-account*.json
 **/*.jks
 **/*.keystore
+.git/
+.env.*
+**/*adminsdk*.json
+**/*.pem
+**/*.p12
+**/*.dump
+**/*.backup
+**/*.hprof

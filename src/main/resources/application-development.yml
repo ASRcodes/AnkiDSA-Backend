@@ -1,0 +1,6 @@
+# Local PostgreSQL development; credentials still come from environment variables.
+spring:
+  flyway:
+    enabled: true
+app:
+  hosted: false
