@@ -54,10 +54,8 @@ repair the connection.
   schema-validation errors. If a schema error appears next, inspect the actual
   migration history before running migrations; never reset or baseline blindly.
 
-To complete the live deployment from this workspace, provide the Render service
-URL plus access through a connected signed-in browser or a privately configured
-Render API credential. The Supabase Session pooler host and username are also
-needed to verify the fix. Keep passwords and tokens out of chat and Git.
+The repaired service is live at https://ankidsa-backend.onrender.com. Keep
+passwords and tokens in private environment settings, outside chat and Git.
 
 References: [Supabase connection modes](https://supabase.com/docs/guides/database/connecting-to-postgres),
 [Supavisor tenant routing](https://supabase.github.io/supavisor/connecting/overview/),
@@ -65,15 +63,27 @@ References: [Supabase connection modes](https://supabase.com/docs/guides/databas
 
 ## Verification recorded on 2026-10-15
 
-- Java 21 Maven `verify`: **45 tests passed, zero failures/errors/skips**, including
+- Java 21 Maven `verify`: **46 tests passed, zero failures/errors/skips**, including
   nine connection-configuration regressions and the production-profile TLS check.
   This used a fresh, disposable PostgreSQL 18 database bound to loopback; migrations
-  V1 through V5 all completed there. No live Supabase data was changed.
+  V1 through V5 all completed there.
 - The packaged JAR ran with the production profile, Flyway disabled, TLS PostgreSQL,
   and a 256 MiB Java heap. Real HTTP requests returned `/health` 200, `/ready` 200,
   and unauthenticated `/api/auth/verify` 401.
 - Three Python reminder-script tests passed; the source credential scan reported
   no high-confidence findings. Docker is not installed here, so no local container
   build/runtime result is claimed.
-- These are local results. The live Render health/readiness requests timed out;
-  live configuration changes and deployment verification still require Render access.
+- Render built and deployed commit `1585755906939a36681cefa525826d28b14d80ba`.
+  The live `/health` and database-backed `/ready` endpoints return HTTP 200.
+- Before migration, the existing public schema was compared with V1, backed up
+  outside both repositories with Windows DPAPI encryption, restored locally, and
+  rehearsed through V5. The matching legacy schema was explicitly baselined at V1;
+  V2-V5 were then applied and validated. Automatic baselining remains disabled.
+  Original account, problem, and review values were verified unchanged.
+- Nineteen live HTTP checks passed: registration, login, verification, create/edit/
+  delete, queue, scheduling, idempotent review, stats, logout revocation, and exact
+  extension CORS. The generated test account was removed and original records
+  were checked again. Existing database credentials and JWT secret were preserved.
+- Password-recovery email and push notifications remain disabled pending provider
+  configuration. The Netlify frontend URL will be added to exact CORS origins
+  once allocated.

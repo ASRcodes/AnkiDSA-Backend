@@ -21,7 +21,7 @@ jobs:
           POSTGRES_DB: ankidsa_test_ci
           POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['127.0.0.1:5432:5432']
-        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+        options: --health-cmd "pg_isready -U beta_test_admin -d ankidsa_test_ci" --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,11 +57,16 @@ jobs:
       - name: Docker build and disposable startup
         run: |
           docker build -t ankidsa:test .
-          docker run -d --name ankidsa-test --memory=512m -p 127.0.0.1:8081:8081 -e SERVER_ADDRESS=0.0.0.0 -e SPRING_PROFILES_ACTIVE=demo -e JWT_SECRET="$(openssl rand -base64 48)" ankidsa:test
+          docker run -d --name ankidsa-test --memory=512m -p 127.0.0.1:8081:8081 \
+            -e SERVER_ADDRESS=0.0.0.0 -e SPRING_PROFILES_ACTIVE=demo \
+            -e SPRING_DATASOURCE_URL='jdbc:h2:mem:docker_smoke;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;NON_KEYWORDS=INTERVAL;DB_CLOSE_DELAY=-1' \
+            -e JWT_SECRET="$(openssl rand -base64 48)" ankidsa:test
           trap 'docker rm -f ankidsa-test' EXIT
           for attempt in $(seq 1 36); do
             if curl --fail --silent http://127.0.0.1:8081/ready >/dev/null; then exit 0; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' ankidsa-test)" != true ]; then break; fi
             sleep 5
           done
           echo 'Disposable container did not become ready'
+          docker logs --tail 150 ankidsa-test
           exit 1
