@@ -87,3 +87,11 @@ References: [Supabase connection modes](https://supabase.com/docs/guides/databas
 - Password-recovery email and push notifications remain disabled pending provider
   configuration. The Netlify frontend URL will be added to exact CORS origins
   once allocated.
+- The full GitHub validation now passes, including Docker startup. Its disposable
+  demo smoke test uses an in-memory H2 database because the non-root runtime
+  intentionally cannot write under `/app`.
+- Supabase's default public API grants were removed from the 11 app tables and
+  three ID sequences using [scripts/restrict-data-api.sql](scripts/restrict-data-api.sql).
+  Both `anon` and `authenticated` now have no direct table/sequence privileges;
+  original records and live backend readiness were verified afterward. Review
+  grants again when adding tables; project-wide default grants were not changed.
