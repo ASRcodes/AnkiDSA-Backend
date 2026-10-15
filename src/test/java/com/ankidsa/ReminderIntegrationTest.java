@@ -65,6 +65,26 @@ class ReminderIntegrationTest {
   assertEquals("SENT",db.queryForObject("select status from reminder_deliveries where user_id=?",String.class,user));
   assertNotNull(db.queryForObject("select sent_at from reminder_deliveries where user_id=?",Timestamp.class,user));
  }
+ @Test void noReminderWhenAllQuestionsAreScheduledForLater() {
+  db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock).plusDays(1),user);
+  assertEquals(0,job.runBatch().sent());
+  verifyNoInteractions(push);
+ }
+ @Test void overdueQuestionsCanTriggerOneNewReminderTheFollowingDay() {
+  assertEquals(1,job.runBatch().sent());
+  clock.advance(86400);
+  assertEquals(1,job.runBatch().sent());
+  assertEquals(0,job.runBatch().sent());
+  verify(push,times(2)).sendReminderNotification(eq(token),anyString());
+ }
+ @Test void finishingReviewsBeforeRetryStopsThePendingReminder() {
+  when(push.sendReminderNotification(anyString(),anyString())).thenReturn(NotificationService.Delivery.RETRY);
+  assertEquals(1,job.runBatch().retryable());
+  db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock).plusDays(3),user);
+  clock.advance(61);
+  assertEquals(1,job.runBatch().failed());
+  verify(push,times(1)).sendReminderNotification(eq(token),anyString());
+ }
  @Test void concurrentTriggerDoesNotSendTwice() throws Exception {
   CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
   when(push.sendReminderNotification(anyString(),anyString())).thenAnswer(a->{entered.countDown(); assertTrue(release.await(5,TimeUnit.SECONDS));return NotificationService.Delivery.SENT;});

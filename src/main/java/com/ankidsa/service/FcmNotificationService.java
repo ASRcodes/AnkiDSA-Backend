@@ -14,8 +14,8 @@ public class FcmNotificationService implements NotificationService {
         FirebaseMessaging sender = messaging.getIfAvailable();
         if (sender == null) return Delivery.FAILED;
         var message = Message.builder().setToken(token)
-            .setNotification(Notification.builder().setTitle("A little practice, lasting recall")
-                .setBody("Take a moment to revisit your review queue.").build())
+            .setNotification(Notification.builder().setTitle("Your questions for today are ready")
+                .setBody("Tap to see which questions to revisit and review your approach.").build())
             .putData("action", "OPEN_QUEUE").putData("deliveryId", deliveryId)
             .setAndroidConfig(AndroidConfig.builder().setTtl(3600000).setCollapseKey("daily-review")
                 .setNotification(AndroidNotification.builder().setTag("daily-review")
