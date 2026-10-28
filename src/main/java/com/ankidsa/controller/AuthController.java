@@ -69,6 +69,8 @@ public class AuthController {
         return new Session(jwt.generateToken(user), user.getId(), user.getEmail(), user.displayName());
     }
 
+    // Precomputed from an unrelated random value to avoid hashing during startup.
+    // Keep cost 12 aligned with SecurityConfig; unknown accounts still run matches.
     private static final String DUMMY_HASH =
-        new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12).encode(UUID.randomUUID().toString());
+        "$2a$12$4c4RScmnOyrKfREOO6XtWOy8xnOn5ztZaVhxOWct1IaFjUPsbyVTO";
 }
