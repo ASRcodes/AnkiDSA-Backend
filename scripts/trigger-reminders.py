@@ -18,13 +18,15 @@ def run():
     deadline = time.monotonic() + 360
     # Wake the sleeping API. No secret is sent to an unverified redirect target.
     ready = False
-    for _ in range(6):
+    wake_deadline = time.monotonic() + 180
+    while time.monotonic() < wake_deadline:
         try:
-            with opener.open(base + '/ready', timeout=20) as response:
+            with opener.open(base + '/ready', timeout=max(0.1, min(20, wake_deadline - time.monotonic()))) as response:
                 ready = response.status == 200
                 if ready: break
-        except (HTTPError, URLError, TimeoutError): pass
-        time.sleep(5)
+        except HTTPError as error: error.close()
+        except (URLError, TimeoutError): pass
+        time.sleep(max(0, min(5, wake_deadline - time.monotonic())))
     if not ready: raise RuntimeError('API readiness timed out')
     for _ in range(8):
         if time.monotonic() >= deadline: break

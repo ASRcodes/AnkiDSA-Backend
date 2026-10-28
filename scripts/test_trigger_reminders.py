@@ -21,6 +21,36 @@ class TriggerTest(unittest.TestCase):
         with patch.dict(os.environ, {'API_PUBLIC_URL':'https://api.example.test', 'REMINDER_TRIGGER_SECRET':'fixture-'+'x'*48}, clear=True), patch.object(trigger, 'build_opener', return_value=Opener()), patch.object(trigger.time, 'sleep'), contextlib.redirect_stdout(output):
             trigger.run()
         return calls, output.getvalue()
+    def test_readiness_retries_quick_503s_until_server_wakes(self):
+        clock = [0]
+        probes, posts = [], []
+        class Opener:
+            def open(self, request, timeout):
+                if isinstance(request, str):
+                    probes.append(request)
+                    if clock[0] < 140:
+                        raise trigger.HTTPError(request, 503, 'Waking', {}, None)
+                    return Response({'status': 'ready'})
+                posts.append(request)
+                return Response({'status': 'complete', 'remaining': 0})
+        def sleep(seconds): clock[0] += seconds
+        with patch.dict(os.environ, {'API_PUBLIC_URL':'https://api.example.test', 'REMINDER_TRIGGER_SECRET':'fixture-'+'x'*48}, clear=True), patch.object(trigger, 'build_opener', return_value=Opener()), patch.object(trigger.time, 'monotonic', side_effect=lambda: clock[0]), patch.object(trigger.time, 'sleep', side_effect=sleep), contextlib.redirect_stdout(io.StringIO()):
+            trigger.run()
+        self.assertGreater(len(probes), 6)
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(clock[0], 140)
+
+    def test_unavailable_readiness_stops_at_deadline_without_triggering(self):
+        clock = [0]
+        class Opener:
+            def open(self, request, timeout):
+                if not isinstance(request, str): raise AssertionError('Must not send a trigger')
+                raise trigger.HTTPError(request, 503, 'Unavailable', {}, None)
+        def sleep(seconds): clock[0] += seconds
+        with patch.dict(os.environ, {'API_PUBLIC_URL':'https://api.example.test', 'REMINDER_TRIGGER_SECRET':'fixture-'+'x'*48}, clear=True), patch.object(trigger, 'build_opener', return_value=Opener()), patch.object(trigger.time, 'monotonic', side_effect=lambda: clock[0]), patch.object(trigger.time, 'sleep', side_effect=sleep):
+            with self.assertRaisesRegex(RuntimeError, 'readiness timed out'): trigger.run()
+        self.assertEqual(clock[0], 180)
+
     def test_duplicate_busy_trigger_waits_and_never_logs_secret_or_extra_payload(self):
         calls, output = self.run_with([{'status':'busy','remaining':0}, {'status':'complete','remaining':0,'sent':1,'private':'must-not-print'}])
         self.assertEqual(len(calls), 2)
