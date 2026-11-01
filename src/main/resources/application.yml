@@ -60,6 +60,7 @@ app:
   public-url: ${APP_PUBLIC_URL:}
   api-public-url: ${API_PUBLIC_URL:}
   trusted-proxy-cidrs: ${TRUSTED_PROXY_CIDRS:}
+  client-ip-mode: ${CLIENT_IP_MODE:cidr}
   reminders:
     trigger-secret: ${REMINDER_TRIGGER_SECRET:}
     start: '06:30'

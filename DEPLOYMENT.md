@@ -31,6 +31,22 @@ Before deployment:
 6. Backend Actions `checks.yml` has no provider secrets. After deploying the automatic reminder coordinator, apply the reviewed [Supabase wake setup](ops/supabase-reminder-wake.sql) using the intended project's owner connection. Its ten morning public `/ready` requests contain no secrets; the backend sends within 06:30–12:00 Asia/Kolkata using the existing lease/claim ledger. Create a main-only `reminders` environment with `API_PUBLIC_URL` and an independent `REMINDER_TRIGGER_SECRET`, then set repository variable `REMINDERS_ENABLED=true`. GitHub now performs a read-only audit at 12:47 Asia/Kolkata; manual workflow mode `deliver` tests the protected sender during the morning window. Follow [REMINDER-OPERATIONS.md](REMINDER-OPERATIONS.md) for verification, proof limits and rollback. Delivery remains best effort, including the crash-after-FCM-acceptance duplicate boundary.
 7. Optional deployment workflow uses main-only `production` environment `RENDER_DEPLOY_HOOK`; run only after required validation passed on the intended latest main revision. No paid overages or billing method.
 
+
+For the current public-only Render Free web service, set `CLIENT_IP_MODE=render-cloudflare`
+with `TRUSTED_PROXY_CIDRS` empty. [Render documents](https://render.com/articles/host-pocketbase-on-render#making-pocketbase-see-the-real-client-ip)
+that its Cloudflare ingress overwrites `CF-Connecting-IP`; caller-supplied entries can
+remain in `X-Forwarded-For`. This mode validates a single literal IP and ignores those
+other forwarding headers. Missing, malformed or duplicate client-IP headers share
+one conservative rate-limit bucket. Startup requires Render's own `RENDER=true`,
+`RENDER_SERVICE_TYPE=web`, and `RENDER_EXTERNAL_URL` to match `API_PUBLIC_URL` exactly
+as an HTTPS `onrender.com` origin. Do not set these runtime identity variables manually.
+This avoids putting every tester into the proxy's shared login limit. The default
+`cidr` mode retains the configured trusted-proxy chain for other deployments.
+[Free Render services cannot receive private network traffic](https://render.com/docs/free#other-limitations);
+review this public-ingress assumption before changing plans, adding private ingress,
+introducing another proxy, or changing the public hostname. No request IPs are logged
+or exposed by this configuration.
+
 Tests: H2 and disposable loopback PostgreSQL, plus notification/email adapter mocks/local HTTP. Docker build/runtime checks are in CI and must pass before launch; Docker is not installed in the current local workspace. No live provider test is implied by mocks.
 
 Rollback the application to a reviewed compatible artifact while retaining additive tables and all study data. Do not down-migrate or restore over the live database. Restore only into a separate recovery database pending explicit owner review. Pause reminder jobs while investigating failures. Rotate exposed secrets; never reintroduce compromised credentials from old artifacts.
