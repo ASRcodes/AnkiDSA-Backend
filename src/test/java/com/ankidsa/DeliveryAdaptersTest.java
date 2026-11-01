@@ -6,6 +6,9 @@ import com.google.api.core.ApiFutures;
 import com.sun.net.httpserver.HttpServer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import java.net.*;
 import java.net.http.HttpClient;
 import java.util.*;
@@ -14,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
+@ExtendWith(OutputCaptureExtension.class)
 class DeliveryAdaptersTest {
  @Test void fcmUsesAdminSdkAndClassifiesPermanentVersusTransientFailures() {
   FirebaseMessaging messaging=mock(FirebaseMessaging.class);
@@ -25,6 +29,25 @@ class DeliveryAdaptersTest {
   assertEquals(NotificationService.Delivery.UNREGISTERED,FcmNotificationService.classify(MessagingErrorCode.UNREGISTERED));
   assertEquals(NotificationService.Delivery.RETRY,FcmNotificationService.classify(MessagingErrorCode.QUOTA_EXCEEDED));
   assertEquals(NotificationService.Delivery.FAILED,FcmNotificationService.classify(MessagingErrorCode.SENDER_ID_MISMATCH));
+ }
+ @Test void fcmDiagnosticsContainOnlyFixedReasonsAndSdkCodes(CapturedOutput output) {
+  FirebaseMessaging messaging=mock(FirebaseMessaging.class);
+  @SuppressWarnings("unchecked") ObjectProvider<FirebaseMessaging> provider=mock(ObjectProvider.class);
+  when(provider.getIfAvailable()).thenReturn(messaging);
+  FirebaseMessagingException rejected=mock(FirebaseMessagingException.class);
+  when(rejected.getMessagingErrorCode()).thenReturn(MessagingErrorCode.SENDER_ID_MISMATCH);
+  when(rejected.getErrorCode()).thenReturn(com.google.firebase.ErrorCode.PERMISSION_DENIED);
+  when(rejected.getMessage()).thenReturn("private-provider-payload");
+  when(messaging.sendAsync(any(Message.class))).thenReturn(ApiFutures.immediateFailedFuture(rejected));
+  var adapter=new FcmNotificationService(provider);
+  assertEquals(NotificationService.Delivery.FAILED,adapter.sendToToken("private-device-token","private-delivery-id"));
+  assertTrue(output.getAll().contains("reason=SENDER_ID_MISMATCH"));
+  assertTrue(output.getAll().contains("providerCode=PERMISSION_DENIED"));
+  when(messaging.sendAsync(any(Message.class))).thenReturn(ApiFutures.immediateFailedFuture(new IllegalStateException("private-sdk-error")));
+  assertEquals(NotificationService.Delivery.RETRY,adapter.sendToToken("private-device-token","private-delivery-id"));
+  assertTrue(output.getAll().contains("reason=SDK_FAILURE"));
+  for (String value : List.of("private-provider-payload","private-device-token","private-delivery-id","private-sdk-error"))
+   assertFalse(output.getAll().contains(value));
  }
  @Test void brevoPostsOverHttpFixtureAndRetriesExplicitTemporaryFailure() throws Exception {
   var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);

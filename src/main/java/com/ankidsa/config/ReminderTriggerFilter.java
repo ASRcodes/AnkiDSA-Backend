@@ -25,7 +25,7 @@ public class ReminderTriggerFilter extends OncePerRequestFilter {
     @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
         String supplied = req.getHeader("X-Reminder-Secret");
-        if (!req.getMethod().equals("POST") || expected.length < 32 || supplied == null
+        if (!(req.getMethod().equals("POST") || req.getMethod().equals("GET")) || expected.length < 32 || supplied == null
                 || supplied.length() > 256 || !MessageDigest.isEqual(expected, supplied.getBytes(StandardCharsets.UTF_8))) {
             res.setStatus(401); res.setContentType("application/json");
             res.getWriter().write("{\"message\":\"Job authorization required.\"}"); return;

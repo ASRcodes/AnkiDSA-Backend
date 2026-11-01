@@ -13,8 +13,9 @@ recovery requires both that frontend URL and a working mail provider.
 
 Current release: API https://ankidsa-backend.onrender.com and web
 https://ankidsa.netlify.app are live. Render has the exact Netlify and extension
-CORS origins configured. Recovery email and push are still disabled pending
-provider configuration; account/study flows have passed live verification.
+CORS origins configured. Brevo password recovery and Android FCM are configured;
+password-reset inbox tests and direct phone delivery have passed. Daily scheduling
+is verified separately after infrastructure changes; see [REMINDER-OPERATIONS.md](REMINDER-OPERATIONS.md).
 
 The complete owner-facing guide is maintained in the companion [AnkiDSA frontend DEPLOYMENT.md](https://github.com/ASRcodes/AnkiDSA-frontend/blob/main/DEPLOYMENT.md). In this workspace it is `C:\Users\rajsi\ankidsa\DEPLOYMENT.md`. Publish both reviewed repository revisions together; the link will contain the new guide only after you push these changes.
 
@@ -27,7 +28,7 @@ Before deployment:
 3. Review pending SQL. V1–V4 are unchanged; legacy V4 clears `users.fcm_token`, so review it explicitly if pending. V5 is additive. After verified backup/review set maintenance-only `BACKUP_VERIFIED=true`, `MIGRATION_APPROVED=true`, and `LEGACY_V4_REVIEWED=true` only if appropriate; run `--migrate-database`. No automatic baseline, clean, reset, DROP or TRUNCATE is permitted. Missing or conflicting Flyway history requires manual reconciliation.
 4. In Render connect this GitHub repo/root Dockerfile. Choose Free, disable auto deploy, health check `/ready`. Enter every value in `.env.example` privately, replacing placeholders. Use exact Pages/Render HTTPS origins; secrets never go into client bundles.
 5. Configure Brevo Free verified sender/API key, Firebase Spark FCM HTTP v1/least-privilege service account. Upload Firebase JSON as Render secret file `firebase-service-account.json`; set `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/firebase-service-account.json`. Set notifications/recovery true only with functioning credentials. Brevo sender approval without an owned domain is an external launch gate.
-6. Backend Actions `checks.yml` has no provider secrets. Create main-only `reminders` environment with `API_PUBLIC_URL` variable and independent `REMINDER_TRIGGER_SECRET` secret. Set repository variable `REMINDERS_ENABLED=true` only after notification delivery is configured, then manually test `reminders.yml` inside 06:30–12:00 Asia/Kolkata. GHA triggers four morning batches, handles cold starts, and uses a database lease/claim ledger. Delivery remains best effort, with an unavoidable crash-after-FCM-acceptance duplicate boundary.
+6. Backend Actions `checks.yml` has no provider secrets. After deploying the automatic reminder coordinator, apply the reviewed [Supabase wake setup](ops/supabase-reminder-wake.sql) using the intended project's owner connection. Its ten morning public `/ready` requests contain no secrets; the backend sends within 06:30–12:00 Asia/Kolkata using the existing lease/claim ledger. Create a main-only `reminders` environment with `API_PUBLIC_URL` and an independent `REMINDER_TRIGGER_SECRET`, then set repository variable `REMINDERS_ENABLED=true`. GitHub now performs a read-only audit at 12:47 Asia/Kolkata; manual workflow mode `deliver` tests the protected sender during the morning window. Follow [REMINDER-OPERATIONS.md](REMINDER-OPERATIONS.md) for verification, proof limits and rollback. Delivery remains best effort, including the crash-after-FCM-acceptance duplicate boundary.
 7. Optional deployment workflow uses main-only `production` environment `RENDER_DEPLOY_HOOK`; run only after required validation passed on the intended latest main revision. No paid overages or billing method.
 
 Tests: H2 and disposable loopback PostgreSQL, plus notification/email adapter mocks/local HTTP. Docker build/runtime checks are in CI and must pass before launch; Docker is not installed in the current local workspace. No live provider test is implied by mocks.

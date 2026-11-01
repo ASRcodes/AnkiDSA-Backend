@@ -7,4 +7,5 @@ public class ReminderJobController {
     private final SchedulerService reminders;
     public ReminderJobController(SchedulerService reminders) { this.reminders = reminders; }
     @PostMapping("/internal/reminders") public SchedulerService.Result run() { return reminders.runBatch(); }
+    @GetMapping("/internal/reminders") public SchedulerService.Audit audit() { return reminders.audit(); }
 }

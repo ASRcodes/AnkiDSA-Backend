@@ -1,10 +1,16 @@
 name: Daily reminder delivery
 on:
   schedule:
-    # UTC, daily at 06:33 / 06:53 / 07:13 and 09:47 Asia/Kolkata.
-    - cron: '3,23,43 1 * * *'
-    - cron: '17 4 * * *'
+    # Audit after the morning window. Supabase wakes the backend for actual delivery.
+    # A delayed GitHub run can still inspect today's results without sending late pushes.
+    - cron: '17 7 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Check delivery health, or manually deliver within the morning window
+        type: choice
+        default: audit
+        options: [audit, deliver]
 permissions:
   contents: read
 concurrency:
@@ -15,13 +21,19 @@ jobs:
     if: github.ref == 'refs/heads/main' && vars.REMINDERS_ENABLED == 'true'
     environment: reminders
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Wake API and deliver bounded batches
-        run: python3 scripts/trigger-reminders.py
+      - name: Check daily delivery or run a manual batch
+        run: |
+          if [ "$REMINDER_MODE" = deliver ]; then
+            python3 scripts/trigger-reminders.py
+          else
+            python3 scripts/trigger-reminders.py --audit
+          fi
         env:
+          REMINDER_MODE: ${{ inputs.mode || 'audit' }}
           API_PUBLIC_URL: ${{ vars.API_PUBLIC_URL }}
           REMINDER_TRIGGER_SECRET: ${{ secrets.REMINDER_TRIGGER_SECRET }}

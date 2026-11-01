@@ -31,6 +31,7 @@ class ReminderIntegrationTest {
  @Autowired JdbcTemplate db;
  @Autowired PlatformTransactionManager manager;
  @Autowired MockMvc mvc;
+ @Autowired com.ankidsa.config.JwtService jwt;
  NotificationService push;
  MutableClock clock;
  SchedulerService job;
@@ -47,6 +48,7 @@ class ReminderIntegrationTest {
   // TestDatabaseGuard rejects remote URLs; this cleanup is confined to disposable fixtures.
   db.update("delete from reminder_deliveries"); db.update("delete from reminder_devices");
   db.update("delete from mail_reservations");
+  db.update("delete from job_leases where name='reminders-last-success'");
   db.update("update mail_budget set blocked_until=? where id=1",Timestamp.from(Instant.EPOCH));
   db.update("update job_leases set owner=null,lease_until=? where name='reminders'",Timestamp.from(Instant.EPOCH));
   clock=new MutableClock(); push=mock(NotificationService.class);
@@ -82,7 +84,9 @@ class ReminderIntegrationTest {
   assertEquals(1,job.runBatch().retryable());
   db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock).plusDays(3),user);
   clock.advance(61);
-  assertEquals(1,job.runBatch().failed());
+  var cancelled=job.runBatch();
+  assertEquals(1,cancelled.skipped()); assertEquals(0,cancelled.failed()); assertEquals(0,cancelled.remaining());
+  assertEquals("INELIGIBLE",db.queryForObject("select failure_code from reminder_deliveries where user_id=?",String.class,user));
   verify(push,times(1)).sendReminderNotification(eq(token),anyString());
  }
  @Test void concurrentTriggerDoesNotSendTwice() throws Exception {
@@ -111,18 +115,160 @@ class ReminderIntegrationTest {
  @Test void removedOrMovedDeviceCannotReceiveAnOldPendingReminder() {
   when(push.sendReminderNotification(anyString(),anyString())).thenReturn(NotificationService.Delivery.RETRY);
   job.runBatch(); db.update("delete from reminder_devices where token_hash=?",hash); clock.advance(61);
-  assertEquals(1,job.runBatch().failed()); verify(push,times(1)).sendReminderNotification(anyString(),anyString());
+  var removed=job.runBatch();
+  assertEquals(1,removed.skipped()); assertEquals(0,removed.failed()); assertEquals(0,removed.remaining());
+  verify(push,times(1)).sendReminderNotification(anyString(),anyString());
  }
  @Test void invalidTokenIsRemovedAndExpiredWorkIsNotSent() {
   when(push.sendReminderNotification(anyString(),anyString())).thenReturn(NotificationService.Delivery.UNREGISTERED);
-  assertEquals(1,job.runBatch().failed());
+  var expired=job.runBatch();
+  assertEquals(1,expired.skipped()); assertEquals(0,expired.failed()); assertEquals(0,expired.remaining());
+  assertEquals("UNREGISTERED",db.queryForObject("select failure_code from reminder_deliveries where user_id=?",String.class,user));
+  assertEquals(0,job.runBatch().skipped());
   assertEquals(0,db.queryForObject("select count(*) from reminder_devices where token_hash=?",Integer.class,hash));
   clock.advance(6*3600); assertEquals("outside_window",job.runBatch().status());
+ }
+ @Test void expiredDeviceDoesNotPreventOtherDevicesFromReceivingTheirReminder() {
+  String validToken="valid-phone-"+UUID.randomUUID();
+  String validHash=PasswordRecoveryService.fingerprint(validToken);
+  db.update("insert into reminder_devices(token_hash,user_id,token,session_version,updated_at) values (?,?,?,0,?)",validHash,user,validToken,Timestamp.from(clock.instant()));
+  when(push.sendReminderNotification(eq(token),anyString())).thenReturn(NotificationService.Delivery.UNREGISTERED);
+  var result=job.runBatch();
+  assertEquals(1,result.skipped()); assertEquals(1,result.sent()); assertEquals(0,result.failed()); assertEquals(0,result.remaining());
+  assertEquals(1,db.queryForObject("select count(*) from reminder_devices where user_id=?",Integer.class,user));
+  var repeated=job.runBatch();
+  assertEquals(0,repeated.sent()); assertEquals(0,repeated.skipped());
+  verify(push,times(1)).sendReminderNotification(eq(validToken),anyString());
+ }
+ @Test void rejectedDeviceDoesNotPreventOtherDevicesFromReceivingTheirReminder() {
+  String validToken="valid-phone-"+UUID.randomUUID();
+  String validHash=PasswordRecoveryService.fingerprint(validToken);
+  db.update("insert into reminder_devices(token_hash,user_id,token,session_version,updated_at) values (?,?,?,0,?)",validHash,user,validToken,Timestamp.from(clock.instant()));
+  when(push.sendReminderNotification(eq(token),anyString())).thenReturn(NotificationService.Delivery.FAILED);
+  var result=job.runBatch();
+  assertEquals(1,result.failed()); assertEquals(1,result.sent()); assertEquals(0,result.skipped()); assertEquals(0,result.remaining());
+  assertEquals("PROVIDER_REJECTED",db.queryForObject("select failure_code from reminder_deliveries where token_hash=?",String.class,hash));
+  assertEquals(0,job.runBatch().sent());
+  verify(push,times(1)).sendReminderNotification(eq(validToken),anyString());
  }
  @Test void jobEndpointRequiresDedicatedSecret() throws Exception {
   mvc.perform(post("/internal/reminders").header("X-Reminder-Secret","wrong")).andExpect(status().isUnauthorized());
   mvc.perform(post("/internal/reminders").header("X-Reminder-Secret","test-only-reminder-secret-at-least-43-characters-long"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("disabled"));
+ }
+ @Test void auditRequiresDedicatedSecretEvenForAnAuthenticatedAccount() throws Exception {
+  mvc.perform(get("/internal/reminders")).andExpect(status().isUnauthorized());
+  mvc.perform(get("/internal/reminders").header("X-Reminder-Secret","wrong")).andExpect(status().isUnauthorized());
+  String userJwt=jwt.generateToken(com.ankidsa.entity.User.builder().id(user).tokenVersion(0L).build());
+  mvc.perform(get("/internal/reminders").header("Authorization","Bearer "+userJwt)).andExpect(status().isUnauthorized());
+  mvc.perform(get("/internal/reminders").header("X-Reminder-Secret","test-only-reminder-secret-at-least-43-characters-long"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("disabled"))
+   .andExpect(jsonPath("$.day").exists()).andExpect(jsonPath("$.ranToday").isBoolean())
+   .andExpect(jsonPath("$.pending").value(0)).andExpect(jsonPath("$.lastBatchRemaining").value(0))
+   .andExpect(jsonPath("$.token").doesNotExist());
+  assertEquals(0,db.queryForObject("select count(*) from reminder_deliveries",Integer.class));
+  verifyNoInteractions(push);
+ }
+ @Test void auditDetectsMissingMorningCycleWithoutSendingOrStaging() {
+  clock.advance(6*3600);
+  var audit=job.audit();
+  assertTrue(audit.windowClosed()); assertFalse(audit.ranToday());
+  assertEquals("audit",audit.status()); assertEquals(LocalDate.now(clock),audit.day());
+  assertEquals(0,audit.sent()); assertEquals(0,audit.failed()); assertEquals(0,audit.pending());
+  assertEquals(0,db.queryForObject("select count(*) from reminder_deliveries",Integer.class));
+  verifyNoInteractions(push);
+ }
+ @Test void auditAcceptsACompletedEmptyMorningCycleAndDoesNotMistakeYesterdayForToday() {
+  db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock).plusDays(4),user);
+  job.runBatch(); clock.advance(6*3600);
+  var healthy=job.audit();
+  assertTrue(healthy.ranToday()); assertTrue(healthy.windowClosed()); assertEquals(0,healthy.lastBatchRemaining());
+  assertEquals("remaining:0",db.queryForObject("select owner from job_leases where name='reminders-last-success'",String.class));
+  assertEquals(0,healthy.sent()); assertEquals(0,healthy.failed()); assertEquals(0,healthy.pending());
+  clock.advance(86400);
+  assertFalse(job.audit().ranToday());
+  verifyNoInteractions(push);
+ }
+ @Test void auditSeparatesProviderFailureFromExpectedDeviceExpiry() {
+  String expiredToken="expired-phone-"+UUID.randomUUID();
+  db.update("insert into reminder_devices(token_hash,user_id,token,session_version,updated_at) values (?,?,?,0,?)",
+   PasswordRecoveryService.fingerprint(expiredToken),user,expiredToken,Timestamp.from(clock.instant()));
+  when(push.sendReminderNotification(eq(token),anyString())).thenReturn(NotificationService.Delivery.FAILED);
+  when(push.sendReminderNotification(eq(expiredToken),anyString())).thenReturn(NotificationService.Delivery.UNREGISTERED);
+  job.runBatch(); clock.advance(6*3600);
+  var audit=job.audit();
+  assertTrue(audit.ranToday()); assertEquals(1,audit.failed()); assertEquals(1,audit.skipped()); assertEquals(0,audit.pending());
+  verify(push,times(2)).sendReminderNotification(anyString(),anyString());
+ }
+ @Test void auditCountsPendingWorkOnlyWhileTheDeviceAndReviewsRemainEligible() {
+  when(push.sendReminderNotification(anyString(),anyString())).thenReturn(NotificationService.Delivery.RETRY);
+  job.runBatch(); clock.advance(6*3600);
+  assertEquals(1,job.audit().pending());
+  db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock).plusDays(3),user);
+  assertEquals(0,job.audit().pending());
+  db.update("update problems set next_review_date=? where user_id=?",LocalDate.now(clock),user);
+  db.update("delete from reminder_devices where token_hash=?",hash);
+  assertEquals(0,job.audit().pending());
+  verify(push,times(1)).sendReminderNotification(anyString(),anyString());
+ }
+ @Test void auditDoesNotCountADispatchLeaseOrAfternoonOrFutureSuccessMarker() {
+  clock.advance(6*3600);
+  db.update("update job_leases set owner=null,lease_until=? where name='reminders'",Timestamp.from(clock.instant().minusSeconds(3600)));
+  assertFalse(job.audit().ranToday());
+  db.update("insert into job_leases(name,lease_until,owner) values ('reminders-last-success',?,'remaining:0')",Timestamp.from(clock.instant()));
+  assertFalse(job.audit().ranToday());
+  clock.advance(-6*3600);
+  db.update("update job_leases set lease_until=? where name='reminders-last-success'",Timestamp.from(clock.instant().plusSeconds(60)));
+  assertFalse(job.audit().ranToday());
+ }
+ @Test void auditPreservesUnstagedBacklogAndTheNextCompletedBatchClearsIt() {
+  String lateToken="late-phone-"+UUID.randomUUID();
+  String lateHash=PasswordRecoveryService.fingerprint(lateToken);
+  when(push.sendReminderNotification(eq(token),anyString())).thenAnswer(invocation -> {
+   db.update("insert into reminder_devices(token_hash,user_id,token,session_version,updated_at) values (?,?,?,0,?)",
+    lateHash,user,lateToken,Timestamp.from(clock.instant()));
+   return NotificationService.Delivery.SENT;
+  });
+  var initial=job.runBatch();
+  assertEquals(1,initial.sent()); assertEquals(1,initial.remaining());
+  var incomplete=job.audit();
+  assertTrue(incomplete.ranToday()); assertEquals(0,incomplete.pending()); assertEquals(1,incomplete.lastBatchRemaining());
+  assertEquals("remaining:1",db.queryForObject("select owner from job_leases where name='reminders-last-success'",String.class));
+  var completed=job.runBatch();
+  assertEquals(1,completed.sent()); assertEquals(0,completed.remaining());
+  clock.advance(6*3600);
+  var healthy=job.audit();
+  assertTrue(healthy.ranToday()); assertEquals(0,healthy.pending()); assertEquals(0,healthy.lastBatchRemaining());
+  assertEquals("remaining:0",db.queryForObject("select owner from job_leases where name='reminders-last-success'",String.class));
+ }
+ @Test void afternoonRegistrationsDoNotCreateHistoricalMorningBacklog() {
+  job.runBatch(); clock.advance(6*3600);
+  String afternoonToken="afternoon-phone-"+UUID.randomUUID();
+  db.update("insert into reminder_devices(token_hash,user_id,token,session_version,updated_at) values (?,?,?,0,?)",
+   PasswordRecoveryService.fingerprint(afternoonToken),user,afternoonToken,Timestamp.from(clock.instant()));
+  var audit=job.audit();
+  assertTrue(audit.ranToday()); assertEquals(0,audit.pending()); assertEquals(0,audit.lastBatchRemaining());
+  verify(push,times(1)).sendReminderNotification(anyString(),anyString());
+ }
+ @Test void malformedSuccessMarkersCannotReportAHealthyMorning() {
+  db.update("insert into job_leases(name,lease_until) values ('reminders-last-success',?)",Timestamp.from(clock.instant()));
+  assertFalse(job.audit().ranToday());
+  for(String marker : List.of("", "remaining:-1", "remaining:01", "remaining:2147483648", "remaining:1 extra", "unrelated")) {
+   db.update("update job_leases set owner=? where name='reminders-last-success'",marker);
+   var audit=job.audit();
+   assertFalse(audit.ranToday()); assertEquals(0,audit.lastBatchRemaining());
+  }
+ }
+ @Test void failedBatchReleasesItsLeaseWithoutRecordingSuccessfulCycle() {
+  JdbcTemplate failingDb=spy(db);
+  doThrow(new org.springframework.dao.DataAccessResourceFailureException("synthetic database failure"))
+   .when(failingDb).update(eq("update reminder_deliveries set status='FAILED',failure_code='EXPIRED' where study_date<? and status in ('PENDING','PROCESSING','RETRYABLE')"),eq(LocalDate.now(clock)));
+  var failingJob=new SchedulerService(failingDb,manager,push,clock,true,"06:30","12:00",10,3,180);
+  assertThrows(org.springframework.dao.DataAccessResourceFailureException.class,failingJob::runBatch);
+  assertNull(db.queryForObject("select owner from job_leases where name='reminders'",String.class));
+  assertEquals(0,db.queryForObject("select count(*) from job_leases where name='reminders-last-success'",Integer.class));
+  clock.advance(6*3600); assertFalse(job.audit().ranToday());
+  verifyNoInteractions(push);
  }
  @Test void rollingMailBudgetIsAtomicAndSurvivesNewServiceInstance() throws Exception {
   MailBudget budget=new MailBudget(db,manager,clock,2);

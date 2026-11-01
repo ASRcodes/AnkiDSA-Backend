@@ -4,12 +4,14 @@ COPY pom.xml .
 RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn verify -B
+RUN java -Djarmode=tools -jar target/*.jar extract --destination extracted
 COPY docker/Healthcheck.java /tmp/Healthcheck.java
 RUN javac -d /app /tmp/Healthcheck.java
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S ankidsa && adduser -S ankidsa -G ankidsa
 WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /app/extracted/*.jar app.jar
+COPY --from=build /app/extracted/lib/ lib/
 COPY --from=build /app/Healthcheck.class Healthcheck.class
 ENV JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=10 -XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError"
 USER ankidsa
